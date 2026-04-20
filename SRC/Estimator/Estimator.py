@@ -2,16 +2,16 @@ import torch
 
 
 class EstimatorNetwork(torch.nn.Module):
-    def __init__(self, state_dim, num_layers, output_dim):
+    def __init__(self, state_dim, num_neurons, output_dim):
         super(EstimatorNetwork, self).__init__()
         self.state_dim = state_dim
-        self.num_layers = num_layers
+        self.num_neurons = num_neurons
 
         # 共享的主干网络
-        self.fc1_x = torch.nn.Linear(self.state_dim, self.num_layers * 4)
-        self.fc2_x = torch.nn.Linear(self.num_layers * 4, self.num_layers * 2)
-        self.fc3_x = torch.nn.Linear(self.num_layers * 2, self.num_layers)
-        self.fc4_x = torch.nn.Linear(self.num_layers, output_dim)
+        self.fc1_x = torch.nn.Linear(self.state_dim, self.num_neurons * 4)
+        self.fc2_x = torch.nn.Linear(self.num_neurons * 4, self.num_neurons * 2)
+        self.fc3_x = torch.nn.Linear(self.num_neurons * 2, self.num_neurons)
+        self.fc4_x = torch.nn.Linear(self.num_neurons, output_dim)
 
     def forward(self, input_):
         """处理输入，提取状态和地图特征"""
@@ -100,10 +100,6 @@ class Estimator:
         self.forward_state_buffer[:] = 0
         self.state_buffer[:] = 0
         self.output_buffer[:] = 0
-
-    def estimate_output(self, historical_state):
-        with torch.no_grad():
-            return self.Estimator(historical_state)
 
     def get_estimate_output(self):
         with torch.no_grad():

@@ -1,9 +1,4 @@
-import torch
-
-from SF_TRON_FP.SRC.Utils.Transformation import *
 from SF_TRON_FP.SRC.Env.BaseEnv import *
-
-
 class TronEnv(BaseEnv):
     def __init__(self, EnvCfg, RobotCfg, PPOCfg):
         super().__init__(EnvCfg, RobotCfg, PPOCfg)
@@ -19,6 +14,10 @@ class TronEnv(BaseEnv):
     """机器人状态更新"""
 
     def get_current_observations(self):
+        """
+        通用：获取机器人当前状态的函数，包含了所有RL任务都需要的状态信息； 记为St。返回什么是Task Dependent
+        :return:
+        """
         # 获取机器人
         # #——————————————————————获取当前时刻状态————————————————————————————————##
         self.body_pos, self.body_ori = self.scene["imu_sensor"].data.pos_w, self.scene["imu_sensor"].data.quat_w
@@ -68,6 +67,10 @@ class TronEnv(BaseEnv):
         return current_state
 
     def get_next_observations(self):
+        """
+        通用：获取机器人下一时刻状态的函数，包含了所有RL任务都需要的状态信息； 记为St+1。返回什么是Task Dependent
+        :return:
+        """
 
         # #——————————————————————获取下一时刻状态————————————————————————————————##
         # 获取机器人的关节身体信息
@@ -141,6 +144,10 @@ class TronEnv(BaseEnv):
         return next_state
 
     def get_privilege(self):
+        """
+        Task Dependent：用于特权学习， 获取现实中无法测量的状态
+        :return:
+        """
 
         # #——————————————————————获取额外机器人状态————————————————————————————————##
         linear_vel = self.scene["robot"].data.root_lin_vel_w
@@ -155,13 +162,10 @@ class TronEnv(BaseEnv):
 
     """更新环境"""
 
-    def update_world(self, scaled_action):
-        """ 更新环境状态
-        Args:
-            scaled_action: 机器人动作
+    def update_world(self, scaled_action: torch.Tensor):
         """
-
-        self.effort1 = (self.prev_action - scaled_action).abs().mean(dim=-1, keepdim=True)
+        通用：更新环境状态
+        """
         self.action = scaled_action.clone()
         self.prev_action = scaled_action.clone()
         
@@ -193,9 +197,12 @@ class TronEnv(BaseEnv):
     """-------------------以下均为奖励计算代码-----------------------"""
     """-------------------以下均为奖励计算代码-----------------------"""
 
-    """速度跟踪"""
+    """-------------------注意！！！计算奖励的代码都不是通用的-----------------------"""
+    """-------------------注意！！！计算奖励的代码都不是通用的-----------------------"""
+    """-------------------注意！！！单个计算奖励的代码都不是通用的，但是返回reward的函数是通用的-----------------------"""
 
     def vel_tracking_reward(self):
+        """速度跟踪"""
 
         vel_forward, vel_lateral = yaw_transforming(self.next_linear_vel[:, 0],
                                                     self.next_linear_vel[:, 1],
@@ -210,17 +217,18 @@ class TronEnv(BaseEnv):
         reward *= 1
         return reward
 
-    """高度跟踪"""
+
 
     def body_height_tracking_reward(self):
-
+        """高度跟踪"""
         below_min = torch.abs(self.next_body_height - 0.85)
 
         return -1 * below_min + 0.3
 
-    """方位角跟踪（ZYX）"""
+
 
     def body_ori_tracking_reward(self):
+        """方位角跟踪（ZYX）"""
         reward_ori_track = -0.0 * self.next_body_ori[:, :2].norm(dim=1, keepdim=True)
         reward_ori_track += -0.3 * self.next_body_ori[:, 2].view(-1, 1).norm(dim=1, keepdim=True)
         reward_ori_track += -0.3 * (self.next_L_foot_angle.abs() + self.next_R_foot_angle.abs()).norm(dim=1,
@@ -230,10 +238,10 @@ class TronEnv(BaseEnv):
         reward_ori_track *= 1
         return reward_ori_track
 
-    """脚部限制"""
+
 
     def foot_constraint_reward(self):
-
+        """腿部运动范围限制"""
         foot_regularization_reward = -0.3 * (self.next_joint_pos[:, 0].view(-1, 1) - 0.1).abs()
         foot_regularization_reward += -0.3 * (self.next_joint_pos[:, 1].view(-1, 1) + 0.1).abs()
         foot_regularization_reward += -2 * (self.next_L_foot_z - 0.12).abs() * (~self.next_L_foot_contact_situation)
@@ -248,15 +256,12 @@ class TronEnv(BaseEnv):
 
         return foot_regularization_reward
 
-    """惩罚关节用力"""
-
-    def effort_penalty_reward(self):
-        joint_effort_reward = -0 * self.effort1
-        return joint_effort_reward.view(-1, 1)
-
-    """鼓励单脚着地"""
 
     def single_support_reward(self):
+        """
+        设定步态
+        :return:
+        """
         offset = 0.5
         phase_L = self.phase.clone()
         phase_R = (phase_L + offset) % 1
@@ -265,7 +270,7 @@ class TronEnv(BaseEnv):
         is_stance_R = phase_R < 0.6
         is_double_stance = is_stance_L & is_stance_R
 
-        """OLD"""
+        """惩罚双脚着地，鼓励单脚着地"""
         single_support = self.next_L_foot_contact_situation != self.next_R_foot_contact_situation
         double_support = self.next_L_foot_contact_situation & self.next_R_foot_contact_situation
         flying = (~self.next_L_foot_contact_situation) & (~self.next_R_foot_contact_situation)
@@ -274,7 +279,7 @@ class TronEnv(BaseEnv):
         walking_phase_reward += -0.3 * flying.float()
         walking_phase_reward += -0.3 * double_support.float() * (~is_double_stance)
 
-        """New"""
+        """鼓励按照我设定的规律步态走"""
         walking_phase_reward += 0.3 * (
             ~(is_stance_L ^ self.next_L_foot_contact_situation)).float() - 0.5  # same, then plus
         walking_phase_reward += 0.3 * (~(is_stance_R ^ self.next_R_foot_contact_situation)).float() - 0.5
@@ -282,9 +287,8 @@ class TronEnv(BaseEnv):
         walking_phase_reward *= 1 * (self.vel_cmd == 1)
         return walking_phase_reward.view(-1, 1)
 
-    """鼓励脚悬空"""
-
     def foot_air_time_reward(self):
+        """鼓励单脚悬空时间，免得快速踏步"""
         L_touching_ground = self.next_L_foot_contact_situation & (~self.L_foot_contact_situation)
         R_touching_ground = self.next_R_foot_contact_situation & (~self.R_foot_contact_situation)
 
@@ -299,14 +303,14 @@ class TronEnv(BaseEnv):
         return feet_air_time.view(-1, 1)
 
     def stand_still(self):
+        """当你收到静止指令时，惩罚身体和腿部的运动，鼓励机器人站立不动"""
         stand_still_reward = -0.5 * self.joint_pos[:, 2:].abs().mean(dim=-1, keepdim=True)
         stand_still_reward += -0.1 * self.joint_vel.abs().mean(dim=-1, keepdim=True)
         stand_still_reward *= (self.vel_cmd == 0)
         return stand_still_reward
 
-    """终止条件惩罚"""
-
     def Termination_reward(self):
+        """设定结束的条件"""
         over1 = torch.abs(self.next_body_ori[:, 0].view(-1, 1)) > np.pi / 3
         over2 = torch.abs(self.next_body_ori[:, 1].view(-1, 1)) > np.pi / 3
         over3 = torch.abs(self.next_body_ori[:, 2].view(-1, 1)) > np.pi / 3
@@ -317,12 +321,15 @@ class TronEnv(BaseEnv):
         return reward_fall.view(-1, 1)
 
     def compute_reward(self):
+        """
+        通用：计算你上面设置的所有奖励的合成奖励，并且进行记录用于你print
+        :return:
+        """
         reward = 0
         reward += 1 * self.vel_tracking_reward()
         reward += 1 * self.body_height_tracking_reward()
         reward += 1 * self.body_ori_tracking_reward()
         reward += 1 * self.foot_constraint_reward()
-        reward += 1 * self.effort_penalty_reward()
         reward += 1 * self.single_support_reward()
         reward += 1 * self.foot_air_time_reward()
         reward += 1 * self.stand_still()
@@ -334,8 +341,6 @@ class TronEnv(BaseEnv):
         self.body_ori_tracking_reward_sum += self.body_ori_tracking_reward().mean().item() / self.max_step
         self.foot_constraint_reward_sum += self.foot_constraint_reward().mean().item() / self.max_step
         self.stand_still_reward_sum += self.stand_still().mean().item() / self.max_step
-
-        self.effort_penalty_reward_sum += self.effort_penalty_reward().mean().item() / self.max_step
         self.single_support_reward_sum += self.single_support_reward().mean().item() / self.max_step
         self.foot_air_time_reward_sum += self.foot_air_time_reward().mean().item() / self.max_step
         self.Termination_reward_sum += self.Termination_reward().mean().item() / self.max_step
@@ -343,14 +348,16 @@ class TronEnv(BaseEnv):
         return reward, self.over.float(), (self.time > 20).float()
 
     def print_reward_sum(self):
+        """
+        想加就加
+        :return:
+        """
         print(f"vel_tracking_reward_sum: {self.vel_tracking_reward_sum:.4f}")
         print(f"body_height_tracking_reward_sum: {self.body_height_tracking_reward_sum:.4f}")
         print(f"body_ori_tracking_reward_sum: {self.body_ori_tracking_reward_sum:.4f}")
         print("")
         print(f"foot_constraint_reward_sum: {self.foot_constraint_reward_sum:.4f}")
         print(f"stand_still_reward_sum: {self.stand_still_reward_sum:.4f}")
-        print("")
-        print(f"effort_penalty_reward_sum: {self.effort_penalty_reward_sum:.4f}")
         print("")
         print(f"single_support_reward_sum: {self.single_support_reward_sum:.4f}")
         print(f"foot_air_time_reward_sum: {self.foot_air_time_reward_sum:.4f}")
@@ -363,7 +370,6 @@ class TronEnv(BaseEnv):
         self.body_ori_tracking_reward_sum = 0
         self.foot_constraint_reward_sum = 0
         self.stand_still_reward_sum = 0
-        self.effort_penalty_reward_sum = 0
         self.single_support_reward_sum = 0
         self.foot_air_time_reward_sum = 0
         self.Termination_reward_sum = 0

@@ -13,9 +13,9 @@ from SF_TRON_FP.SRC.Plotter.ImagePlotter import *
 
 Img = ImagePlotter(image_number=2)
 maximum_step = PPOCfg.PPOParam.maximum_step
-episode = PPOCfg.PPOParam.episode
-time_per_epi = EnvCfg.EnvParam.dt * maximum_step
-train = EnvCfg.EnvParam.train
+episode = PPOCfg.PPOParam.episode # 训练的回合数
+time_per_epi = EnvCfg.EnvParam.dt * maximum_step # 每回合的时间长度
+train = EnvCfg.EnvParam.train # True: 训练， False: 画图
 PPO_3 = Actor_Critic(PPOCfg, EnvCfg, index=2)
 Estimator_1 = Estimator(PPOCfg, EnvCfg, index=1)
 if not train:
@@ -28,6 +28,7 @@ import torch
 Env.prim_initialization(reset_all=True)
 for epi in range(episode):
     print(f"===================episode: {epi}===================")
+    """每一段时间改个命令和加干扰"""
     if epi % int(5 / time_per_epi + 1) == 0:
         Env.resample_command()
     if epi % int(2 / time_per_epi + 1) == 0:
@@ -39,13 +40,14 @@ for epi in range(episode):
         state = Env.get_current_observations()
         state[:, 33:] = 0  # basic state 之后就是地图信息，第一阶段机器人盲走
         estimated_privilege_state = Estimator_1.get_estimate_output()
-        full_state = torch.concatenate((state,estimated_privilege_state),dim=-1)
+        full_state = torch.concatenate((state, estimated_privilege_state), dim=-1)
+        """不训练就画图"""
         if not train:
             privilege_state = Env.get_privilege()
             est = Estimator_1.get_estimate_output()
 
-            Img.append(epi * maximum_step + step, 100 * est[:,5:6][0, 0].item(), 0)
-            Img.append(epi * maximum_step + step, 100 * privilege_state[:, 5:6][0, 0].item(), 1)
+            Img.append(epi * maximum_step + step, 100 * est[:, 7:8][0, 0].item(), 0)
+            Img.append(epi * maximum_step + step, 100 * privilege_state[:, 7:8][0, 0].item(), 1)
             # Img.animation_plot()
 
         """做动作"""
@@ -65,7 +67,7 @@ for epi in range(episode):
 
         """计算奖励 判断是否结束"""
 
-        reward, over, extra_over = Env.compute_reward()
+        reward, over, truncated = Env.compute_reward()
 
         """存储经验"""
         if train:
@@ -82,7 +84,7 @@ for epi in range(episode):
                                                    over)
 
         """重置挂掉的机器人"""
-        over += extra_over
+        over += truncated
         Env.prim_initialization(torch.nonzero(over.flatten()).flatten())
 
     """每个回合结束后训练一次"""

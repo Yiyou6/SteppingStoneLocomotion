@@ -2,7 +2,7 @@ from isaaclab.app import AppLauncher
 import argparse
 
 def App_Setup(device,headless):
-# add argparse arguments
+    # add argparse arguments
     parser = argparse.ArgumentParser(description="Tutorial on adding sensors on a robot.")
     # append AppLauncher cli args
     AppLauncher.add_app_launcher_args(parser)

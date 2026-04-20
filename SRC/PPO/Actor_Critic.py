@@ -5,18 +5,26 @@ Actor: 输入状态 输出动作的均值和标准差"""
 
 
 class BaseNetwork(torch.nn.Module):
-    def __init__(self, state_dim, num_layers):
+    def __init__(self, state_dim: int, num_neurons: int):
+        """
+        创建一套基础的神经网络，给Actor和Critic共享
+        :param state_dim: 你的状态维度 ，例如一个倒立摆的状态有theta和theta_dot两个维度，那么state_dim就是2
+        :param num_neurons: 每层用到的神经元数量，随你怎么填，1024以下即可，大了边际效应低
+        """
         super(BaseNetwork, self).__init__()
         self.state_dim = state_dim
-        self.num_layers = num_layers
+        self.num_neurons = num_neurons
 
         # 共享的主干网络
-        self.fc1_x = torch.nn.Linear(self.state_dim, self.num_layers * 4)
-        self.fc2_x = torch.nn.Linear(self.num_layers * 4, self.num_layers * 2)
-        self.fc3_x = torch.nn.Linear(self.num_layers * 2, self.num_layers)
+        self.fc1_x = torch.nn.Linear(self.state_dim, self.num_neurons * 4)
+        self.fc2_x = torch.nn.Linear(self.num_neurons * 4, self.num_neurons * 2)
+        self.fc3_x = torch.nn.Linear(self.num_neurons * 2, self.num_neurons)
 
-    def process_input(self, input_):
-        """处理输入，提取状态和地图特征"""
+    def process_input(self, input_: torch.Tensor):
+        """
+        :param input_: 必须是torch tensor，形状是[agent_num, state_dim]，例如你有16个机器人，每个机器人的状态维度是10，那么输入就是[16, 10]
+        :return: 处理后的特征，形状是[agent_num, num_neurons]，例如你有16个机器人，每个机器人的特征维度是256，那么输出就是[16, 256]
+        """
         x = input_
         # 通过主干网络
         x = torch.nn.functional.elu(self.fc1_x(x))
@@ -27,16 +35,29 @@ class BaseNetwork(torch.nn.Module):
 
 
 class Actor(BaseNetwork):
-    def __init__(self, state_dim, num_layers, actuator_num, action_scale=1, std_scale=1):
-        super(Actor, self).__init__(state_dim, num_layers)
+    def __init__(self, state_dim: int, num_neurons: int, actuator_num: int, action_scale: int = 1, std_scale: int = 0.5):
+        """
+        Actor类提供了采样action的作用，这里是连续动作空间的Actor网络，输出动作的均值和标准差（采样用正态分布）
+        :param state_dim: 状态维度
+        :param num_neurons: 每层用到的神经元数量，随你怎么填，1024以下即可，大了边际效应低
+        :param actuator_num: 你有几个执行器？ 例如机器人有8个电机，那就是8
+        :param action_scale: Actor的均值的默认输出范围是【-1，1】，action_scale = 2则使输出范围会放大两倍，即【-2，2】
+        :param std_scale: 标准差的初始大小，默认为0.5. 不要太大，大了训练效果垃圾因为太随机了。 注意标准差的值同样是会被训练的
+        """
+        super(Actor, self).__init__(state_dim, num_neurons)
         self.actuator_num = actuator_num
         self.act_scale = action_scale
         self.std_scale = std_scale
 
-        self.mean = torch.nn.Linear(self.num_layers, self.actuator_num)
+        self.mean = torch.nn.Linear(self.num_neurons, self.actuator_num)
         self.std = torch.nn.Parameter(torch.ones(self.actuator_num))
 
-    def forward(self, input_):
+    def forward(self, input_: torch.Tensor):
+        """
+        :param input_: 必须是torch tensor，形状是[agent_num, state_dim]，例如你有16个机器人，每个机器人的状态维度是10，那么输入就是[16, 10]
+        注意，在训练过程中，输入的状态可能是[step, agent_num,state_dim]，但这不影响什么东西。详情可以自己了解
+        :return: 返回动作的均值和标准差，都是torch tensor，形状是[agent_num, actuator_num]，例如你有16个机器人，每个机器人有8个电机，那么输出就是[16, 8]
+        """
         x = self.process_input(input_)
         mu = torch.nn.functional.tanh(self.mean(x))
         std = torch.abs(self.std_scale * self.std)
@@ -44,11 +65,21 @@ class Actor(BaseNetwork):
 
 
 class Critic(BaseNetwork):
-    def __init__(self, state_dim, num_layers):
-        super(Critic, self).__init__(state_dim, num_layers)
-        self.fc4_x = torch.nn.Linear(self.num_layers, 1)
+    """
+    Critic类就是负责输入状态和输出对应的state value
+    """
+    def __init__(self, state_dim, num_neurons):
+        super(Critic, self).__init__(state_dim, num_neurons)
+        self.fc4_x = torch.nn.Linear(self.num_neurons, 1)
 
     def forward(self, input_):
+        """
+
+        :param input_: 须是torch tensor，形状是[agent_num, state_dim]，例如你有16个机器人，每个机器人的状态维度是10，那么输入就是[16, 10]
+        注意：同上
+        :return: 回状态的价值，都是torch tensor，形状是[agent_num, 1]，例如你有16个机器人，那么输出就是[16, 1]
+        """
+
         x = self.process_input(input_)
         x = self.fc4_x(x)
         return x
@@ -63,14 +94,14 @@ class Actor_Critic:
         Args:
             PPOCfg: PPO算法的配置参数 (类型: 配置类)
             EnvCfg: 环境的配置参数 (类型: 配置类)
-            index: 该AC的索引 (类型: int, 默认值: 0)
+            index: 该AC的索引，保存神经网络时会用这个索引作为名字，且读取的时候也会读取对应的索引 (类型: int, 默认值: 0)
         """
         self.index = index
         # PPO parameter
         self.gamma = PPOCfg.PPOParam.gamma
         self.lam = PPOCfg.PPOParam.lam
         self.epsilon = PPOCfg.PPOParam.epsilon
-        self.policy_smooth = PPOCfg.PPOParam.policy_smooth
+        self.policy_smooth = PPOCfg.PPOParam.policy_smooth # 这个不是强化学习的一部分，只是一个保证输出动作平滑的损失项的系数，越大越平滑，但过大可能会影响性能，自己调试
         self.entropy_coef = PPOCfg.PPOParam.entropy_coef
         self.batch_size = PPOCfg.PPOParam.batch_size
         self.loss_fn = torch.nn.MSELoss()
@@ -130,7 +161,7 @@ class Actor_Critic:
             state: 当前状态 (类型: torch.tensor, 形状: [agent_num, state_dim])
             deterministic: 是否使用确定性策略
         Returns:
-            action: 选择的动作 (类型: torch.tensor, 形状: [agent_num, actuator_num])
+            action: 选择的action输出值 (类型: torch.tensor, 形状: [agent_num, actuator_num])
         """
         with torch.no_grad():
             mu, std = self.actor(state)
@@ -169,7 +200,7 @@ class Actor_Critic:
         over = buffer.over_buffer.view(-1, 1)
         reward_sum = reward.mean().item()
 
-        # self.save_each_epi_model()
+        self.save_each_epi_model()
         if reward_sum > self.initial_reward_sum:
             self.initial_reward_sum = reward_sum
             self.save_best_model()

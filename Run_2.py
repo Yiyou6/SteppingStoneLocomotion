@@ -49,7 +49,7 @@ for epi in range(episode):
 
         """计算奖励 判断是否结束"""
 
-        reward, over, extra_over = env.compute_reward()
+        reward, over, truncated = env.compute_reward()
 
         """存储经验"""
         if train:
@@ -61,7 +61,7 @@ for epi in range(episode):
                                    step)
 
         """重置挂掉的机器人"""
-        over += extra_over
+        over += truncated
         env.prim_initialization(torch.nonzero(over.flatten()).flatten())
 
     """每个回合结束后训练一次"""
