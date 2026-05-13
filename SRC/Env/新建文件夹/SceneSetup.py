@@ -107,14 +107,14 @@ class _RobotSceneCfg(InteractiveSceneCfg):
     包含光照、地形、机器人本体以及各种传感器。
     """
     # 光照
-    light = AssetBaseCfg(
-        prim_path="/World/skyLight",
-        spawn=DomeLightCfg(
-            intensity=750.0,
-            color=(0.9, 0.9, 0.9),
-            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
-        ),
-    )
+    # light = AssetBaseCfg(
+    #     prim_path="/World/skyLight",
+    #     spawn=DomeLightCfg(
+    #         intensity=750.0,
+    #         color=(0.9, 0.9, 0.9),
+    #         texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+    #     ),
+    # )
 
     # 地形导入器（使用生成器）
     terrain = TerrainImporterCfg(

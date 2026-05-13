@@ -1,6 +1,10 @@
 import sys
 import os
 
+
+a = object()
+
+
 # 自动获取当前文件的目录，然后找到项目根目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)  # 假设脚本在项目子目录中
