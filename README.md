@@ -3,7 +3,7 @@
 # SF_TRON_FP 🤖
 
 **Teach a point-foot robot to cross stepping stones — first blind, then with vision, then without cheating.**
-
+Here is the video: https://www.youtube.com/watch?v=vs608-L7kl0
 *PPO · NVIDIA Isaac Sim · Sim-to-Real*
 
 </div>
