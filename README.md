@@ -1,6 +1,6 @@
 <div align="center">
 
-# SF_TRON_FP 🤖
+# SteppingStoneLocomotion 🤖
 
 **Teach a point-foot robot to cross stepping stones — first blind, then with vision, then without cheating.**
 
